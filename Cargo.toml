@@ -1,0 +1,17 @@
+[package]
+name = "loxerpaper"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+reqwest = { version = "0.12.23", features = ["json"] }
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.143"
+tokio-tungstenite = { version = "0.27.0", features = ["native-tls"] }
+toml = "0.9.5"
+tokio = { version = "1.44.0", features = ["rt-multi-thread", "macros"] }
+dirs-next = "2.0.0"
+dialoguer = { version = "0.11.0", default-features = false, features = ["editor", "password", "zeroize"] }
+url = { version = "2.5.6", features = ["serde"] }
+notify-rust = "4.6.0"
+tempfile = "3.6.0"
