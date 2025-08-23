@@ -96,7 +96,7 @@ impl ApiClient {
 
   /// Get the base URL of the API client.
   pub fn base_url(&self) -> &str {
-    &self.config.base.as_ref().unwrap().base.as_ref().unwrap()
+    self.config.base.as_ref().unwrap().base.as_ref().unwrap()
   }
 
   /// Get the link ID from the API client.

@@ -26,7 +26,6 @@ use notify_rust::Notification as NotifyRustNotification;
 
 use crate::api::ApiClient;
 use crate::api::DesktopApi;
-use crate::api::GnomeDesktopApi;
 use crate::model::response::Response;
 
 /// Spawn a background thread that shows a review notification with actions.
@@ -41,6 +40,7 @@ use crate::model::response::Response;
 /// This function returns immediately; the thread handles user interactions and posts responses.
 pub fn spawn_review_notification(
   client: &ApiClient,
+  desktop: Arc<dyn DesktopApi>,
   current_id: Arc<AtomicI64>,
   link_id: i64,
   post_id: i64,
@@ -55,18 +55,17 @@ pub fn spawn_review_notification(
     let mut n2 = NotifyRustNotification::new();
     n2.summary("Background change pending");
     n2.body(&format!(
-      "Your background will soon change to an image provided by {}. You may review it from here.",
-      username
+      "Your background will soon change to an image provided by {username}. You may review it from here."
     ));
-    n2.action(&format!("horny-{}", post_id), "Horny");
-    n2.action(&format!("disgust-{}", post_id), "Disgust");
-    n2.action(&format!("came-{}", post_id), "Came");
+    n2.action(&format!("horny-{post_id}"), "Horny");
+    n2.action(&format!("disgust-{post_id}"), "Disgust");
+    n2.action(&format!("came-{post_id}"), "Came");
 
     // Show and get handle
     let handle = match n2.show() {
       Ok(h) => h,
       Err(e) => {
-        eprintln!("notify show error: {}", e);
+        eprintln!("notify show error: {e}");
         return;
       }
     };
@@ -82,27 +81,29 @@ pub fn spawn_review_notification(
     // Wait up to 5 minutes for an action
     if let Ok(action_id) = rx.recv_timeout(std::time::Duration::from_secs(300)) {
       if action_id == "__closed" {
-        let g = GnomeDesktopApi::new();
-        if let Err(e) = g.open_file(&image_path) {
-          // Send critical notification: failed to open file
-          let mut warn = NotifyRustNotification::new();
-          warn.summary("Failed to open image");
-          warn.body(&format!("Failed to open image: {}", e));
-          warn.urgency(notify_rust::Urgency::Critical);
-          let _ = warn.show();
-        } else {
-          // Send a notification for the successful file opening
-          let mut info = NotifyRustNotification::new();
-          info.summary("Image opened");
-          info.body("Successfully opened the current background image");
-          info.urgency(notify_rust::Urgency::Normal);
-          let _ = info.show();
+        // Try using the provided DesktopApi to open the image. If it fails, fall back to a notify-rust
+        // notification to inform the user.
+        match desktop.open_file(&image_path) {
+          Ok(_) => {
+            let notif = crate::api::Notification::builder("Image opened")
+              .body("Successfully opened the current background image")
+              .urgency(crate::api::Urgency::Normal)
+              .build();
+            let _ = desktop.send_notification(&notif);
+          }
+          Err(e) => {
+            let notif = crate::api::Notification::builder("Failed to open image")
+              .body(format!("Failed to open image: {}", e))
+              .urgency(crate::api::Urgency::Critical)
+              .build();
+            let _ = desktop.send_notification(&notif);
+          }
         }
         return;
       }
       let parts: Vec<&str> = action_id.splitn(2, '-').collect();
       if parts.len() != 2 {
-        eprintln!("unexpected action id: {}", action_id);
+        eprintln!("unexpected action id: {action_id}");
         return;
       }
       let reaction = parts[0].to_string();
@@ -112,13 +113,13 @@ pub fn spawn_review_notification(
       let current = current_id.load(Ordering::SeqCst);
       if current != reacted_post_id {
         // Send critical notification: image changed
-        let mut warn = NotifyRustNotification::new();
-        warn.summary("Image changed");
-        warn.body(
-          "The image you reacted to is no longer the current background and cannot be reviewed.",
-        );
-        warn.urgency(notify_rust::Urgency::Critical);
-        let _ = warn.show();
+        let notif = crate::api::Notification::builder("Image changed")
+          .body(
+            "The image you reacted to is no longer the current background and cannot be reviewed.",
+          )
+          .urgency(crate::api::Urgency::Critical)
+          .build();
+        let _ = desktop.send_notification(&notif);
         return;
       }
 
@@ -135,18 +136,18 @@ pub fn spawn_review_notification(
       let post_fut = client_thread.post_response(link_id, &resp);
       if let Err(e) = rt.block_on(post_fut) {
         // Send critical notification: failed to post response
-        let mut warn = NotifyRustNotification::new();
-        warn.summary("Failed to post response");
-        warn.body(&format!("Failed to post response: {}", e));
-        warn.urgency(notify_rust::Urgency::Critical);
-        let _ = warn.show();
+        let notif = crate::api::Notification::builder("Failed to post response")
+          .body(format!("Failed to post response: {}", e))
+          .urgency(crate::api::Urgency::Critical)
+          .build();
+        let _ = desktop.send_notification(&notif);
       } else {
         // Send a notification for the successful response
-        let mut info = NotifyRustNotification::new();
-        info.summary("Response posted");
-        info.body(&format!("Successfully posted response: {}", resp.r#type));
-        info.urgency(notify_rust::Urgency::Normal);
-        let _ = info.show();
+        let notif = crate::api::Notification::builder("Response posted")
+          .body(format!("Successfully posted response: {}", resp.r#type))
+          .urgency(crate::api::Urgency::Normal)
+          .build();
+        let _ = desktop.send_notification(&notif);
       }
     }
   });

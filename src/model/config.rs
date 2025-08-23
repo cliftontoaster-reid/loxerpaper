@@ -19,8 +19,8 @@
 use dirs_next::{config_dir, picture_dir};
 use serde::{Deserialize, Serialize};
 use std::env::current_dir;
+use std::fs;
 use std::path::PathBuf;
-use std::{fs};
 use url::Url;
 
 use crate::constants::DISCORD_CLIENT_ID;
@@ -136,7 +136,7 @@ impl Config {
       } else {
         #[cfg(debug_assertions)]
         {
-          println!("Checked {:?}, not found", path);
+          println!("Checked {path:?}, not found");
         }
       }
     }
@@ -177,7 +177,7 @@ impl Config {
     // We then check if the last segment is a number
     let last_segment = link_url
       .path_segments()
-      .and_then(|segments| segments.last())
+      .and_then(|mut segments| segments.next_back())
       .ok_or("Invalid link URL: no path segments")?;
 
     // If it is a number, use that, if not, we ask for the link ID

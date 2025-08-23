@@ -28,7 +28,7 @@ use std::{
 
 use model::config::Config;
 
-use crate::api::{ApiClient, spawn_review_notification};
+use crate::api::{ApiClient, DesktopApi, GnomeDesktopApi, spawn_review_notification};
 
 fn print_gpl_notice() {
   println!("loxerpaper  Copyright (C) 2025  Clifton Toaster Reid");
@@ -72,30 +72,35 @@ fn handle_stdin_commands() {
   let reader = BufReader::new(stdin);
 
   for line in reader.lines() {
-    if let Ok(input) = line {
-      let trimmed = input.trim().to_lowercase();
-      match trimmed.as_str() {
-        "show w" => show_warranty(),
-        "show c" => show_conditions(),
-        "help" => {
-          println!("Available commands:");
-          println!("  show w - Show warranty information");
-          println!("  show c - Show license conditions");
-          println!("  help   - Show this help message");
-          println!("  quit   - Exit the program");
-          println!();
-        }
-        "quit" | "exit" => {
-          println!("Goodbye!");
-          std::process::exit(0);
-        }
-        "" => {} // Ignore empty lines
-        _ => {
-          println!(
-            "Unknown command: '{}'. Type 'help' for available commands.",
-            input.trim()
-          );
-        }
+    let input = match line {
+      Ok(s) => s,
+      Err(e) => {
+        eprintln!("Failed to read from stdin: {e}");
+        break;
+      }
+    };
+    let trimmed = input.trim().to_lowercase();
+    match trimmed.as_str() {
+      "show w" => show_warranty(),
+      "show c" => show_conditions(),
+      "help" => {
+        println!("Available commands:");
+        println!("  show w - Show warranty information");
+        println!("  show c - Show license conditions");
+        println!("  help   - Show this help message");
+        println!("  quit   - Exit the program");
+        println!();
+      }
+      "quit" | "exit" => {
+        println!("Goodbye!");
+        std::process::exit(0);
+      }
+      "" => {} // Ignore empty lines
+      _ => {
+        println!(
+          "Unknown command: '{}'. Type 'help' for available commands.",
+          input.trim()
+        );
       }
     }
   }
@@ -119,6 +124,37 @@ async fn main() {
   // Print GPL notice
   print_gpl_notice();
 
+  // Platform check: we only support Linux for now. Exit early if not.
+  #[cfg(not(target_os = "linux"))]
+  {
+    eprintln!("This build of loxerpaper only supports Linux. Exiting on unsupported OS.");
+    std::process::exit(1);
+  }
+
+  // Detect desktop environment and create appropriate DesktopApi implementation
+  let desktop: Arc<dyn DesktopApi> = {
+    #[cfg(target_os = "linux")]
+    {
+      let desktop_env = std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default();
+      if desktop_env.contains("GNOME") {
+        println!("Detected GNOME desktop environment, using GNOME API.");
+        Arc::new(GnomeDesktopApi::new())
+      } else {
+        eprintln!(
+          "Unsupported desktop environment: '{desktop_env}'. Currently only GNOME is supported."
+        );
+        std::process::exit(1);
+      }
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+      // This should never be reached due to the platform check above, but just in case
+      eprintln!("Unsupported platform for desktop API creation.");
+      std::process::exit(1);
+    }
+  };
+
   // Spawn stdin handler in background thread
   thread::spawn(|| {
     handle_stdin_commands();
@@ -129,12 +165,10 @@ async fn main() {
 
   if let Err(e) = cfg {
     #[cfg(debug_assertions)]
-    {
-      eprintln!("Config load error: {}", e);
-    }
+    eprintln!("Config load error: {e}");
     // We try and find the config file in the default locations.
     if let Err(e2) = Config::try_import() {
-      eprintln!("Failed to import config file: {}", e2);
+      eprintln!("Failed to import config file: {e2}");
       // We then start the query and write the config file.
       let new_cfg = Config::query_config().unwrap();
 
@@ -194,7 +228,7 @@ async fn main() {
         // Fallback to a safe replacement when parsing fails.
         let filename = match url::Url::parse(&post_url).ok().and_then(|u| {
           u.path_segments()
-            .and_then(|s| s.last().map(|s| s.to_string()))
+            .and_then(|mut s| s.next_back().map(|s| s.to_string()))
         }) {
           Some(f) => f,
           None => {
@@ -234,7 +268,7 @@ async fn main() {
 
         if current_id.load(std::sync::atomic::Ordering::SeqCst) == hashed_id {
           // We have the same image, we print a debug message, and return.
-          println!("No new image, current is still id {}", hashed_id);
+          println!("No new image, current is still id {hashed_id}");
           // Wait before next poll
           tokio::time::sleep(sleep_time).await;
           continue;
@@ -242,7 +276,7 @@ async fn main() {
 
         // We have a new image, we download it and set it as the background.
         // Build the target filename from the sanitized stem and extension.
-        let target_filename = format!("{}.{}", sanitize, ext);
+        let target_filename = format!("{sanitize}.{ext}");
 
         // Build the target path for the downloaded image. Don't canonicalize the full
         // file path (the file won't exist yet) and avoid using a TempDir that is
@@ -275,7 +309,7 @@ async fn main() {
             file.write_all(&content).unwrap();
           }
           Err(e) => {
-            eprintln!("Failed to download image: {}", e);
+            eprintln!("Failed to download image: {e}");
             // Wait before next poll
             tokio::time::sleep(sleep_time).await;
             continue;
@@ -286,6 +320,7 @@ async fn main() {
         current_id.store(hashed_id, std::sync::atomic::Ordering::SeqCst);
         spawn_review_notification(
           &client,
+          desktop.clone(),
           current_id.clone(),
           link_id,
           hashed_id,
@@ -295,22 +330,10 @@ async fn main() {
         );
 
         // We now set the background.
-        #[cfg(target_os = "linux")]
-        {
-          let desktop_env = std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default();
-          if desktop_env.contains("GNOME") {
-            use crate::api::{DesktopApi, GnomeDesktopApi};
-
-            let _ = GnomeDesktopApi::new().change_background(&path);
-          }
-        }
-        #[cfg(target_os = "macos")]
-        {
-          unimplemented!("macOS support is not planned");
-        }
+        let _ = desktop.change_background(&path);
       }
       Err(e) => {
-        eprintln!("Failed to fetch link: {}", e);
+        eprintln!("Failed to fetch link: {e}");
         // Wait before next poll on error
         tokio::time::sleep(sleep_time).await;
         continue;

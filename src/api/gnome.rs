@@ -38,8 +38,7 @@ impl DesktopApi for GnomeDesktopApi {
   fn change_background(&self, image: &Path) -> Result<(), DesktopApiError> {
     if !image.exists() {
       return Err(DesktopApiError::InvalidNotification(format!(
-        "image path {:?} does not exist",
-        image
+        "image path {image:?} does not exist"
       )));
     }
 
@@ -49,12 +48,12 @@ impl DesktopApi for GnomeDesktopApi {
 
     // Set both light and dark mode wallpapers to ensure it works regardless of color scheme
     let status_light = Command::new("gsettings")
-      .args(&["set", "org.gnome.desktop.background", "picture-uri", &uri])
+      .args(["set", "org.gnome.desktop.background", "picture-uri", &uri])
       .status()
       .map_err(DesktopApiError::Io)?;
 
     let status_dark = Command::new("gsettings")
-      .args(&[
+      .args([
         "set",
         "org.gnome.desktop.background",
         "picture-uri-dark",
@@ -64,12 +63,11 @@ impl DesktopApi for GnomeDesktopApi {
       .map_err(DesktopApiError::Io)?;
 
     if status_light.success() && status_dark.success() {
-      println!("Successfully changed wallpaper to {:?}", image);
+      println!("Successfully changed wallpaper to {image:?}");
       Ok(())
     } else {
       Err(DesktopApiError::Backend(format!(
-        "gsettings failed - light: {}, dark: {}",
-        status_light, status_dark
+        "gsettings failed - light: {status_light}, dark: {status_dark}"
       )))
     }
   }
@@ -103,10 +101,10 @@ impl DesktopApi for GnomeDesktopApi {
           // notify-rust doesn't accept raw bytes; write a temp file fallback
           if let Ok(mut tmp) = tempfile::Builder::new().suffix(".png").tempfile() {
             use std::io::Write;
-            if tmp.write_all(bytes).is_ok() {
-              if let Ok(path) = tmp.into_temp_path().keep() {
-                n.icon(path.to_string_lossy().as_ref());
-              }
+            if tmp.write_all(bytes).is_ok()
+              && let Ok(path) = tmp.into_temp_path().keep()
+            {
+              n.icon(path.to_string_lossy().as_ref());
             }
           }
         }
@@ -136,15 +134,14 @@ impl DesktopApi for GnomeDesktopApi {
     }
 
     n.show()
-      .map_err(|e| DesktopApiError::Backend(format!("notify-rust error: {}", e)))?;
+      .map_err(|e| DesktopApiError::Backend(format!("notify-rust error: {e}")))?;
     Ok(())
   }
 
   fn open_file(&self, file: &Path) -> Result<(), DesktopApiError> {
     if !file.exists() {
       return Err(DesktopApiError::InvalidNotification(format!(
-        "file path {:?} does not exist",
-        file
+        "file path {file:?} does not exist"
       )));
     }
 
@@ -155,12 +152,11 @@ impl DesktopApi for GnomeDesktopApi {
       .map_err(DesktopApiError::Io)?;
 
     if status.success() {
-      println!("Successfully opened file {:?}", file);
+      println!("Successfully opened file {file:?}");
       Ok(())
     } else {
       Err(DesktopApiError::Backend(format!(
-        "xdg-open failed with exit code: {}",
-        status
+        "xdg-open failed with exit code: {status}"
       )))
     }
   }
