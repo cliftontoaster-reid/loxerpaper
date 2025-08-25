@@ -25,17 +25,17 @@ use {
   std::ffi::OsStr,
   std::os::windows::ffi::OsStrExt,
   windows::{
+    core::PCWSTR,
     Win32::{
       Foundation::HWND,
       UI::{
         Shell::ShellExecuteW,
         WindowsAndMessaging::{
-          SPI_SETDESKWALLPAPER, SPIF_SENDCHANGE, SPIF_UPDATEINIFILE, SW_SHOWNORMAL,
-          SystemParametersInfoW,
+          SystemParametersInfoW, SPIF_SENDCHANGE, SPIF_UPDATEINIFILE, SPI_SETDESKWALLPAPER,
+          SW_SHOWNORMAL,
         },
       },
     },
-    core::PCWSTR,
   },
   winrt_notification::{Duration, IconCrop, Sound, Toast},
 };

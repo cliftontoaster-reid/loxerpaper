@@ -17,6 +17,7 @@
  */
 
 pub mod client;
+#[cfg(target_os = "linux")]
 pub mod gnome;
 pub mod notify_helper;
 
@@ -40,15 +41,32 @@ use std::time::Duration;
 
 /// Creates a desktop API implementation appropriate for the current platform
 pub fn create_desktop_api() -> Arc<dyn DesktopApi> {
-  #[cfg(windows)]
+  #[cfg(target_os = "windows")]
   {
-    Arc::new(WindowsDesktopApi::new())
+    return Arc::new(WindowsDesktopApi::new());
   }
-  #[cfg(not(windows))]
+  #[cfg(target_os = "linux")]
   {
-    // Default to GNOME implementation for Linux/Unix systems
-    Arc::new(GnomeDesktopApi::new())
+    let desktop_env = std::env::var("XDG_CURRENT_DESKTOP")
+      .unwrap_or_default()
+      .to_lowercase();
+
+    return match desktop_env.as_str() {
+      "gnome" => Arc::new(GnomeDesktopApi::new()),
+      _ => {
+        unimplemented!(
+          "The desktop environment {} is not currently supported, please wait for future updates.",
+          desktop_env
+        );
+      }
+    };
   }
+
+  // Not supported
+  unimplemented!(
+    "The operating system {} is not currently supported, please wait for future updates.",
+    std::env::consts::OS
+  );
 }
 
 #[derive(Debug, Clone)]

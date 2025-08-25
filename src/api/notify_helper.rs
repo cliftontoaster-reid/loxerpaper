@@ -19,10 +19,7 @@
 use std::sync::Arc;
 use std::thread;
 
-use notify_rust::Notification as NotifyRustNotification;
-
-use crate::api::ApiClient;
-use crate::api::DesktopApi;
+use crate::api::{ApiClient, DesktopApi, Notification, Urgency};
 
 /// Spawn a background thread that shows a review notification with actions.
 ///
@@ -46,44 +43,39 @@ pub fn spawn_review_notification(
 ) {
   // Clone what we need into the thread - simplified for now
   thread::spawn(move || {
-    // Create a notify-rust notification with actions and wait for user interaction
-    let mut n2 = NotifyRustNotification::new();
-    n2.summary("Background change pending");
-    n2.body(&format!(
-      "Your background will soon change to an image provided by {username}. You may review it from here."
-    ));
-    n2.action(&format!("horny-{post_id}"), "Horny");
-    n2.action(&format!("disgust-{post_id}"), "Disgust");
-    n2.action(&format!("came-{post_id}"), "Came");
+    // Build a cross-platform notification via DesktopApi
+    let notif = Notification::builder("Background change pending")
+      .body(format!(
+        "Your background will soon change to an image provided by {username}. You may review it from here."
+      ))
+      .action(format!("horny-{post_id}"), "Horny")
+      .action(format!("disgust-{post_id}"), "Disgust")
+      .action(format!("came-{post_id}"), "Came")
+      .urgency(Urgency::Normal)
+      .build();
 
-    // Show the notification - simplified without actions for now
-    match n2.show() {
-      Ok(_handle) => {
-        println!("Review notification sent");
-        // For now, just wait a bit and then provide a simple notification
-        std::thread::sleep(std::time::Duration::from_secs(5));
+    let _ = desktop.send_notification(&notif);
+    println!("Review notification sent");
 
-        // Auto-open the image for review
-        match desktop.open_file(&image_path) {
-          Ok(_) => {
-            let notif = crate::api::Notification::builder("Image opened")
-              .body("Successfully opened the current background image")
-              .urgency(crate::api::Urgency::Normal)
-              .build();
-            let _ = desktop.send_notification(&notif);
-          }
-          Err(e) => {
-            let notif = crate::api::Notification::builder("Failed to open image")
-              .body(format!("Failed to open image: {}", e))
-              .urgency(crate::api::Urgency::Critical)
-              .build();
-            let _ = desktop.send_notification(&notif);
-          }
-        }
+    // For now, just wait a bit and then provide a simple notification and open the image
+    std::thread::sleep(std::time::Duration::from_secs(5));
+
+    // Auto-open the image for review
+    match desktop.open_file(&image_path) {
+      Ok(_) => {
+        let notif = Notification::builder("Image opened")
+          .body("Successfully opened the current background image")
+          .urgency(Urgency::Normal)
+          .build();
+        let _ = desktop.send_notification(&notif);
       }
       Err(e) => {
-        eprintln!("notify show error: {e}");
+        let notif = Notification::builder("Failed to open image")
+          .body(format!("Failed to open image: {}", e))
+          .urgency(Urgency::Critical)
+          .build();
+        let _ = desktop.send_notification(&notif);
       }
-    };
+    }
   });
 }

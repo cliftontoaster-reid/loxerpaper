@@ -28,7 +28,7 @@ use std::{
 
 use model::config::Config;
 
-use crate::api::{ApiClient, DesktopApi, spawn_review_notification};
+use crate::api::{ApiClient, DesktopApi, create_desktop_api, spawn_review_notification};
 
 #[cfg(target_os = "linux")]
 use crate::api::GnomeDesktopApi;
@@ -140,34 +140,7 @@ async fn main() {
   }
 
   // Detect desktop environment and create appropriate DesktopApi implementation
-  let desktop: Arc<dyn DesktopApi> = {
-    #[cfg(target_os = "linux")]
-    {
-      let desktop_env = std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default();
-      if desktop_env.contains("GNOME") {
-        println!("Detected GNOME desktop environment, using GNOME API.");
-        Arc::new(GnomeDesktopApi::new())
-      } else {
-        eprintln!(
-          "Unsupported desktop environment: '{desktop_env}'. Currently only GNOME is supported."
-        );
-        std::process::exit(1);
-      }
-    }
-
-    #[cfg(target_os = "windows")]
-    {
-      println!("Detected Windows, using Windows API.");
-      Arc::new(WindowsDesktopApi::new())
-    }
-
-    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
-    {
-      // This should never be reached due to the platform check above, but just in case
-      eprintln!("Unsupported platform for desktop API creation.");
-      std::process::exit(1);
-    }
-  };
+  let desktop: Arc<dyn DesktopApi> = create_desktop_api();
 
   // Spawn stdin handler in background thread
   thread::spawn(|| {
