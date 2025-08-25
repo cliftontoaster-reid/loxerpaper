@@ -67,11 +67,11 @@ pub struct Preferences {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Config {
   #[serde(rename = "Base")]
-  pub base: Option<BaseConfig>,
+  pub base: BaseConfig,
   #[serde(rename = "Feed")]
-  pub feed: Option<FeedConfig>,
+  pub feed: FeedConfig,
   #[serde(rename = "Preferences")]
-  pub preferences: Option<Preferences>,
+  pub preferences: Preferences,
 }
 
 impl Config {

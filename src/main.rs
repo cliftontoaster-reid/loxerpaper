@@ -179,27 +179,24 @@ async fn main() {
   // Then the tool should loop, pinging the API for updates (link) and apply changes if a needed, sending a notification
   // and then waiting for the user defined period of time to restart the loop.
 
-  let should_keep = client
-    .config
-    .preferences
-    .as_ref()
-    .unwrap()
-    .save_locally
-    .unwrap_or(false);
-  let link_id = client.config.feed.as_ref().unwrap().feed.unwrap();
-  let sleep_time = tokio::time::Duration::from_secs(
-    cfg_data
-      .preferences
-      .as_ref()
-      .unwrap()
-      .interval
-      .unwrap_or(60),
-  );
+  // Access preferences and feed directly (they are not Option<> in Config)
+  let should_keep = client.config.preferences.save_locally.unwrap_or(false);
+
+  // feed.feed is Option<i64>; preserve original behavior and unwrap (will panic if absent)
+  let link_id = client.config.feed.feed.unwrap();
+
+  // Determine sleep time, defaulting to 60 seconds if not set
+  let sleep_time = tokio::time::Duration::from_secs(cfg_data.preferences.interval.unwrap_or(60));
+
+  // Determine if we should send notifications
+  let send_notifications = cfg_data.preferences.notifications.unwrap_or(true);
+
+  // clone the Option<String> before unwrapping to avoid moving out of cfg_data
   let api_key = cfg_data
     .feed
-    .unwrap()
     .token
-    .unwrap_or("your_token".to_string());
+    .clone()
+    .unwrap_or_else(|| "your_token".to_string());
 
   let current_id = Arc::new(std::sync::atomic::AtomicI64::new(-1));
 
@@ -305,16 +302,18 @@ async fn main() {
 
         // We now send the notification and edit the current ID
         current_id.store(hashed_id, std::sync::atomic::Ordering::SeqCst);
-        spawn_review_notification(
-          &client,
-          desktop.clone(),
-          current_id.clone(),
-          link_id,
-          hashed_id,
-          link.set_by.unwrap_or("unknown".to_string()),
-          api_key.clone(),
-          path.clone(),
-        );
+        if send_notifications {
+          spawn_review_notification(
+            &client,
+            desktop.clone(),
+            current_id.clone(),
+            link_id,
+            hashed_id,
+            link.set_by.unwrap_or("unknown".to_string()),
+            api_key.clone(),
+            path.clone(),
+          );
+        }
 
         // We now set the background.
         let _ = desktop.change_background(&path);
