@@ -28,7 +28,13 @@ use std::{
 
 use model::config::Config;
 
-use crate::api::{ApiClient, DesktopApi, GnomeDesktopApi, spawn_review_notification};
+use crate::api::{ApiClient, DesktopApi, spawn_review_notification};
+
+#[cfg(target_os = "linux")]
+use crate::api::GnomeDesktopApi;
+
+#[cfg(windows)]
+use crate::api::WindowsDesktopApi;
 
 fn print_gpl_notice() {
   println!("loxerpaper  Copyright (C) 2025  Clifton Toaster Reid");
@@ -124,10 +130,12 @@ async fn main() {
   // Print GPL notice
   print_gpl_notice();
 
-  // Platform check: we only support Linux for now. Exit early if not.
-  #[cfg(not(target_os = "linux"))]
+  // Platform check: we support Linux and Windows
+  #[cfg(not(any(target_os = "linux", target_os = "windows")))]
   {
-    eprintln!("This build of loxerpaper only supports Linux. Exiting on unsupported OS.");
+    eprintln!(
+      "This build of loxerpaper only supports Linux and Windows. Exiting on unsupported OS."
+    );
     std::process::exit(1);
   }
 
@@ -147,7 +155,13 @@ async fn main() {
       }
     }
 
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(target_os = "windows")]
+    {
+      println!("Detected Windows, using Windows API.");
+      Arc::new(WindowsDesktopApi::new())
+    }
+
+    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
     {
       // This should never be reached due to the platform check above, but just in case
       eprintln!("Unsupported platform for desktop API creation.");

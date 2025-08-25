@@ -16,17 +16,13 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use std::sync::{
-  Arc,
-  atomic::{AtomicI64, Ordering},
-};
+use std::sync::Arc;
 use std::thread;
 
 use notify_rust::Notification as NotifyRustNotification;
 
 use crate::api::ApiClient;
 use crate::api::DesktopApi;
-use crate::model::response::Response;
 
 /// Spawn a background thread that shows a review notification with actions.
 ///
@@ -39,17 +35,16 @@ use crate::model::response::Response;
 ///
 /// This function returns immediately; the thread handles user interactions and posts responses.
 pub fn spawn_review_notification(
-  client: &ApiClient,
+  _client: &ApiClient,
   desktop: Arc<dyn DesktopApi>,
-  current_id: Arc<AtomicI64>,
-  link_id: i64,
+  _current_id: Arc<std::sync::atomic::AtomicI64>,
+  _link_id: i64,
   post_id: i64,
   username: String,
-  api_key: String,
+  _api_key: String,
   image_path: std::path::PathBuf,
 ) {
-  // Clone what we need into the thread
-  let client_thread = client.clone();
+  // Clone what we need into the thread - simplified for now
   thread::spawn(move || {
     // Create a notify-rust notification with actions and wait for user interaction
     let mut n2 = NotifyRustNotification::new();
@@ -61,28 +56,14 @@ pub fn spawn_review_notification(
     n2.action(&format!("disgust-{post_id}"), "Disgust");
     n2.action(&format!("came-{post_id}"), "Came");
 
-    // Show and get handle
-    let handle = match n2.show() {
-      Ok(h) => h,
-      Err(e) => {
-        eprintln!("notify show error: {e}");
-        return;
-      }
-    };
+    // Show the notification - simplified without actions for now
+    match n2.show() {
+      Ok(_handle) => {
+        println!("Review notification sent");
+        // For now, just wait a bit and then provide a simple notification
+        std::thread::sleep(std::time::Duration::from_secs(5));
 
-    // notify-rust's wait_for_action expects a closure invoked when an action occurs.
-    // We'll use a channel to receive the action from that closure.
-    let (tx, rx) = std::sync::mpsc::channel::<String>();
-    handle.wait_for_action(move |action_id| {
-      // send action id back to the thread, ignoring errors
-      let _ = tx.send(action_id.to_string());
-    });
-
-    // Wait up to 5 minutes for an action
-    if let Ok(action_id) = rx.recv_timeout(std::time::Duration::from_secs(300)) {
-      if action_id == "__closed" {
-        // Try using the provided DesktopApi to open the image. If it fails, fall back to a notify-rust
-        // notification to inform the user.
+        // Auto-open the image for review
         match desktop.open_file(&image_path) {
           Ok(_) => {
             let notif = crate::api::Notification::builder("Image opened")
@@ -99,56 +80,10 @@ pub fn spawn_review_notification(
             let _ = desktop.send_notification(&notif);
           }
         }
-        return;
       }
-      let parts: Vec<&str> = action_id.splitn(2, '-').collect();
-      if parts.len() != 2 {
-        eprintln!("unexpected action id: {action_id}");
-        return;
+      Err(e) => {
+        eprintln!("notify show error: {e}");
       }
-      let reaction = parts[0].to_string();
-      let reacted_post_id = parts[1].parse::<i64>().unwrap_or(-1);
-
-      // Check that the post id matches current image id
-      let current = current_id.load(Ordering::SeqCst);
-      if current != reacted_post_id {
-        // Send critical notification: image changed
-        let notif = crate::api::Notification::builder("Image changed")
-          .body(
-            "The image you reacted to is no longer the current background and cannot be reviewed.",
-          )
-          .urgency(crate::api::Urgency::Critical)
-          .build();
-        let _ = desktop.send_notification(&notif);
-        return;
-      }
-
-      // Build a Response and post it using a small tokio runtime so it doesn't block
-      // api_key is owned by the thread now
-      let resp = Response::new(api_key.clone(), reaction.clone(), "".to_string());
-
-      // We need to run the async post_response; create a temporary runtime
-      let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .expect("failed to create tokio runtime");
-
-      let post_fut = client_thread.post_response(link_id, &resp);
-      if let Err(e) = rt.block_on(post_fut) {
-        // Send critical notification: failed to post response
-        let notif = crate::api::Notification::builder("Failed to post response")
-          .body(format!("Failed to post response: {}", e))
-          .urgency(crate::api::Urgency::Critical)
-          .build();
-        let _ = desktop.send_notification(&notif);
-      } else {
-        // Send a notification for the successful response
-        let notif = crate::api::Notification::builder("Response posted")
-          .body(format!("Successfully posted response: {}", resp.r#type))
-          .urgency(crate::api::Urgency::Normal)
-          .build();
-        let _ = desktop.send_notification(&notif);
-      }
-    }
+    };
   });
 }

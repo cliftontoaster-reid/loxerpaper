@@ -20,14 +20,36 @@ pub mod client;
 pub mod gnome;
 pub mod notify_helper;
 
+#[cfg(windows)]
+pub mod windows;
+
 pub use client::ApiClient;
-pub use gnome::GnomeDesktopApi;
 pub use notify_helper::spawn_review_notification;
+
+#[cfg(target_os = "linux")]
+pub use gnome::GnomeDesktopApi;
+
+#[cfg(windows)]
+pub use windows::WindowsDesktopApi;
 
 use std::error::Error;
 use std::fmt;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
+
+/// Creates a desktop API implementation appropriate for the current platform
+pub fn create_desktop_api() -> Arc<dyn DesktopApi> {
+  #[cfg(windows)]
+  {
+    Arc::new(WindowsDesktopApi::new())
+  }
+  #[cfg(not(windows))]
+  {
+    // Default to GNOME implementation for Linux/Unix systems
+    Arc::new(GnomeDesktopApi::new())
+  }
+}
 
 #[derive(Debug, Clone)]
 pub struct Notification {
@@ -129,9 +151,9 @@ impl fmt::Display for DesktopApiError {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match self {
       DesktopApiError::Unsupported => write!(f, "operation not supported on this platform"),
-      DesktopApiError::Io(e) => write!(f, "io error: {}", e),
-      DesktopApiError::Backend(msg) => write!(f, "backend error: {}", msg),
-      DesktopApiError::InvalidNotification(msg) => write!(f, "invalid notification: {}", msg),
+      DesktopApiError::Io(e) => write!(f, "io error: {e}"),
+      DesktopApiError::Backend(msg) => write!(f, "backend error: {msg}"),
+      DesktopApiError::InvalidNotification(msg) => write!(f, "invalid notification: {msg}"),
     }
   }
 }

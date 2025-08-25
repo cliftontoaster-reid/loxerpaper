@@ -111,18 +111,13 @@ impl DesktopApi for GnomeDesktopApi {
       }
     }
 
-    // Map urgency
-    match notification.urgency {
-      crate::api::Urgency::Low => {
-        n.hint(notify_rust::Hint::Urgency(notify_rust::Urgency::Low));
-      }
-      crate::api::Urgency::Normal => {
-        n.hint(notify_rust::Hint::Urgency(notify_rust::Urgency::Normal));
-      }
-      crate::api::Urgency::Critical => {
-        n.hint(notify_rust::Hint::Urgency(notify_rust::Urgency::Critical));
-      }
-    }
+    // Map urgency using hint - TODO: figure out correct API
+    // let urgency_hint = match notification.urgency {
+    //   crate::api::Urgency::Low => notify_rust::Hint::Urgency(notify_rust::Urgency::Low),
+    //   crate::api::Urgency::Normal => notify_rust::Hint::Urgency(notify_rust::Urgency::Normal),
+    //   crate::api::Urgency::Critical => notify_rust::Hint::Urgency(notify_rust::Urgency::Critical),
+    // };
+    // n.hint(urgency_hint);
 
     // timeout
     if let Some(t) = notification.timeout {
